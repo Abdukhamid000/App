@@ -27,6 +27,8 @@ import {
     hasDynamicExternalWorkflow,
     isGroupPolicy,
     isInstantSubmitEnabled,
+    // eslint-disable-next-line no-restricted-imports -- isPaidGroupPolicy is intentional: it mirrors the pay gate in canIOUBePaid, which is billing/paid-only (Collect/Control), so a payment can never exist on a free group plan like Submit.
+    isPaidGroupPolicy,
     isPolicyAdmin,
     isPolicyApprover,
     isPolicyMember,
@@ -412,10 +414,16 @@ function isCancelPaymentAction(
         return false;
     }
 
-    const isAdmin = policy?.role === CONST.POLICY.ROLE.ADMIN;
-    const isPayer = isPayerUtils(currentAccountID, currentUserEmail, report, bankAccountList, policy, false);
+    if (!isPaidGroupPolicy(policy)) {
+        return false;
+    }
 
-    if (!isAdmin || !isPayer) {
+    // Mirror the eligibility expression the pay gate uses, so whoever could pay the report can also cancel it.
+    const canPayReport =
+        isPayerUtils(currentAccountID, currentUserEmail, report, bankAccountList, policy, false) ||
+        (policy?.reimbursementChoice === CONST.POLICY.REIMBURSEMENT_CHOICES.REIMBURSEMENT_MANUAL && canMemberWrite(policy, currentUserEmail, CONST.POLICY.POLICY_FEATURE.WORKFLOWS_PAYMENTS));
+
+    if (!canPayReport) {
         return false;
     }
 
