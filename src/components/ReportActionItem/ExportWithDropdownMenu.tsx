@@ -12,7 +12,7 @@ import useThemeStyles from '@hooks/useThemeStyles';
 import {getAccountingIntegrationDisplayName} from '@libs/AccountingUtils';
 import {savePreferredExportMethod as savePreferredExportMethodUtils} from '@libs/actions/Policy/Policy';
 import {exportToIntegration, markAsManuallyExported} from '@libs/actions/Report';
-import {canBeExported as canBeExportedUtils, getIntegrationIcon, isExported as isExportedUtils} from '@libs/ReportUtils';
+import {canBeExported as canBeExportedUtils, getIntegrationIcon, isExported as isExportedUtils, isExportInProgress as isExportInProgressUtils} from '@libs/ReportUtils';
 
 import variables from '@styles/variables';
 
@@ -75,6 +75,9 @@ function ExportWithDropdownMenu({
     const iconToDisplay = getIntegrationIcon(connectionName, expensifyIcons, policy);
     const canBeExported = canBeExportedUtils(report);
     const isExported = isExportedUtils(reportActions, report);
+    // An export is already running, so the button reports progress instead of accepting a second press that would
+    // queue a duplicate export.
+    const isExportInProgress = isExportInProgressUtils(reportActions);
     const flattenedWrapperStyle = StyleSheet.flatten([styles.flex1, wrapperStyle]);
     const connectionNameFriendly = getAccountingIntegrationDisplayName(policy, connectionName, translate);
 
@@ -130,9 +133,14 @@ function ExportWithDropdownMenu({
         <ButtonWithDropdownMenu<ReportExportType>
             variant={CONST.BUTTON_VARIANT.SUCCESS}
             pressOnEnter
+            isLoading={isExportInProgress}
+            isDisabled={isExportInProgress}
             shouldAlwaysShowDropdownMenu
             anchorAlignment={dropdownAnchorAlignment}
             onPress={(_, value) => {
+                if (isExportInProgress) {
+                    return;
+                }
                 if (isExported) {
                     showConfirmModal({
                         title: translate('workspace.exportAgainModal.title'),

@@ -13303,6 +13303,40 @@ function isExported(reportActions: OnyxEntry<ReportActions> | ReportAction[], re
     return lastSuccessfulExportCreated > lastResetCreated;
 }
 
+/**
+ * Whether an export to an accounting integration is currently in flight.
+ *
+ * Keyed on the pending state of the newest EXPORTED_TO_INTEGRATION action, which is the same signal that renders the
+ * "started exporting this report to ..." message (see getExportIntegrationActionFragments), so the button and the
+ * message can never disagree. It covers exports the backend starts on its own (automatic export after approval), and
+ * because Report_Export answers 200 on acceptance rather than on completion and sends no successData, the optimistic
+ * pending state survives that response and only resolves when the real export status arrives.
+ */
+function isExportInProgress(reportActions: OnyxEntry<ReportActions> | ReportAction[]): boolean {
+    if (!reportActions) {
+        return false;
+    }
+
+    const reportActionList = Array.isArray(reportActions) ? reportActions : Object.values(reportActions);
+    let latestExportAction: ReportAction | undefined;
+
+    for (const action of reportActionList) {
+        if (!isExportIntegrationAction(action)) {
+            continue;
+        }
+        if (!latestExportAction || action.created > latestExportAction.created) {
+            latestExportAction = action;
+        }
+    }
+
+    // An attempt that already carries an error is finished, not in flight, so the retry path stays reachable.
+    if (!latestExportAction || !isEmptyObject(latestExportAction.errors ?? {})) {
+        return false;
+    }
+
+    return latestExportAction.pendingAction === CONST.RED_BRICK_ROAD_PENDING_ACTION.ADD;
+}
+
 function hasExportError(reportActions: OnyxEntry<ReportActions> | ReportAction[], report?: OnyxEntry<Report>) {
     if (report?.hasExportError) {
         return true;
@@ -14517,6 +14551,7 @@ export {
     getIntegrationIcon,
     canBeExported,
     isExported,
+    isExportInProgress,
     hasExportError,
     hasOnlyNonReimbursableTransactions,
     getReportLastMessage,

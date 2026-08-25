@@ -44,6 +44,7 @@ import {
     isCurrentUserSubmitter,
     isExpenseReport as isExpenseReportUtils,
     isExported as isExportedUtil,
+    isExportInProgress as isExportInProgressUtil,
     isHoldCreator,
     isInvoiceReport as isInvoiceReportUtils,
     isIOUReport as isIOUReportUtils,
@@ -298,8 +299,12 @@ function isExportAction(report: Report, currentUserLogin: string, policy?: Polic
     }
 
     const syncEnabled = hasIntegrationAutoSync(policy, connectedIntegration);
+    // While an export is in flight the button has to stay mounted so it can render as a disabled spinner. exportToIntegration
+    // optimistically marks the report exported, so without this the button unmounts the instant it is pressed and the user
+    // gets no feedback at all.
+    const isInProgress = isExportInProgressUtil(reportActions);
     const isExported = isExportedUtil(reportActions, report);
-    if (isExported) {
+    if (isExported && !isInProgress) {
         return false;
     }
 

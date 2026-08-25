@@ -2521,3 +2521,65 @@ describe('isExportAction and isPreferredExporter for todos filtering', () => {
         expect(isPreferredExporter(policy, CURRENT_USER_EMAIL)).toBe(true);
     });
 });
+
+describe('isExportAction while an export is in flight', () => {
+    const inFlightPolicy = () =>
+        createMock<Policy>({
+            role: CONST.POLICY.ROLE.ADMIN,
+            connections: {
+                [CONST.POLICY.CONNECTIONS.NAME.QBO]: {
+                    config: {
+                        autoSync: {enabled: false},
+                        export: {exporter: CURRENT_USER_EMAIL},
+                    },
+                },
+            },
+        });
+
+    const exportedReport = () =>
+        createMock<Report>({
+            reportID: '1',
+            type: CONST.REPORT.TYPE.EXPENSE,
+            stateNum: CONST.REPORT.STATE_NUM.APPROVED,
+            statusNum: CONST.REPORT.STATUS_NUM.APPROVED,
+            isWaitingOnBankAccount: false,
+            // exportToIntegration writes this optimistically the moment the button is pressed
+            isExportedToIntegration: true,
+        });
+
+    const exportAction = (overrides: Partial<ReportAction> = {}) =>
+        ({
+            reportActionID: '99',
+            actionName: CONST.REPORT.ACTIONS.TYPE.EXPORTED_TO_INTEGRATION,
+            created: '2026-08-25 10:00:00.000',
+            originalMessage: {label: 'quickbooksOnline', lastModified: '2026-08-25 10:00:00.000'},
+            ...overrides,
+        }) as ReportAction;
+
+    beforeEach(() => {
+        jest.mocked(getValidConnectedIntegration).mockReturnValue(CONST.POLICY.CONNECTIONS.NAME.QBO);
+    });
+
+    it('keeps the button mounted while the export action is still pending, so it can render as a disabled spinner', () => {
+        const reportActions = [exportAction({pendingAction: CONST.RED_BRICK_ROAD_PENDING_ACTION.ADD})];
+
+        expect(isExportAction(exportedReport(), CURRENT_USER_EMAIL, inFlightPolicy(), reportActions)).toBe(true);
+    });
+
+    it('hides the button once the export finishes and the report is exported', () => {
+        const reportActions = [exportAction()];
+
+        expect(isExportAction(exportedReport(), CURRENT_USER_EMAIL, inFlightPolicy(), reportActions)).toBe(false);
+    });
+
+    it('does not treat a failed attempt as in flight, so the retry path stays reachable', () => {
+        const reportActions = [
+            exportAction({
+                pendingAction: CONST.RED_BRICK_ROAD_PENDING_ACTION.ADD,
+                errors: {'1787581503741353': 'export failed'},
+            }),
+        ];
+
+        expect(isExportAction(exportedReport(), CURRENT_USER_EMAIL, inFlightPolicy(), reportActions)).toBe(false);
+    });
+});
