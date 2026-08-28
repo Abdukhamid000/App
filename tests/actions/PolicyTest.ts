@@ -1264,35 +1264,43 @@ describe('actions/Policy', () => {
             });
         });
 
-        it('create a new workspace with enabled workflows if the onboarding choice is newDotTrackWorkspace', async () => {
-            const policyID = Policy.generatePolicyID();
-            // When a new workspace is created with introSelected set to TRACK_WORKSPACE
-            Policy.createWorkspace({
-                conciergeChat: undefined,
-                policyOwnerEmail: ESH_EMAIL,
-                makeMeAdmin: true,
-                policyName: WORKSPACE_NAME,
-                policyID,
-                engagementChoice: CONST.ONBOARDING_CHOICES.TRACK_WORKSPACE,
-                introSelected: {choice: CONST.ONBOARDING_CHOICES.TRACK_WORKSPACE},
-                currentUserAccountIDParam: ESH_ACCOUNT_ID,
-                currentUserEmailParam: ESH_EMAIL,
-                currency: undefined,
-                isSelfTourViewed: false,
-                betas: undefined,
-                hasActiveAdminPolicies: false,
-                activePolicy: undefined,
-            });
-            await waitForBatchedUpdates();
+        // CreateWorkspace builds a track workspace with the Workflows feature off, so the optimistic policy has to say the
+        // same thing, otherwise the row is shown until the request is answered and then taken away again.
+        it.each([CONST.ONBOARDING_CHOICES.TRACK_WORKSPACE, CONST.ONBOARDING_CHOICES.TRACK_PERSONAL, CONST.ONBOARDING_CHOICES.PERSONAL_SPEND])(
+            'creates a new workspace with workflows disabled if the onboarding choice is %s',
+            async (choice) => {
+                const policyID = Policy.generatePolicyID();
+                // When a new workspace is created with a track engagement choice
+                Policy.createWorkspace({
+                    conciergeChat: undefined,
+                    policyOwnerEmail: ESH_EMAIL,
+                    makeMeAdmin: true,
+                    policyName: WORKSPACE_NAME,
+                    policyID,
+                    engagementChoice: choice,
+                    introSelected: {choice},
+                    currentUserAccountIDParam: ESH_ACCOUNT_ID,
+                    currentUserEmailParam: ESH_EMAIL,
+                    currency: undefined,
+                    isSelfTourViewed: false,
+                    betas: undefined,
+                    hasActiveAdminPolicies: false,
+                    activePolicy: undefined,
+                });
+                await waitForBatchedUpdates();
 
-            await TestHelper.getOnyxData({
-                key: `${ONYXKEYS.COLLECTION.POLICY}${policyID}`,
-                callback: (policy) => {
-                    // Then workflows is enabled
-                    expect(policy?.areWorkflowsEnabled).toBeTruthy();
-                },
-            });
-        });
+                await TestHelper.getOnyxData({
+                    key: `${ONYXKEYS.COLLECTION.POLICY}${policyID}`,
+                    callback: (policy) => {
+                        // Then the Workflows feature is off, matching what CreateWorkspace returns
+                        expect(policy?.areWorkflowsEnabled).toBe(false);
+                        // And delayed submission is still on, which is a separate concern from the Workflows feature
+                        expect(policy?.autoReportingFrequency).toBe(CONST.POLICY.AUTO_REPORTING_FREQUENCIES.IMMEDIATE);
+                        expect(policy?.harvesting?.enabled).toBe(false);
+                    },
+                });
+            },
+        );
 
         it('create a new workspace with disabled workflows if the onboarding choice is newDotEmployer', async () => {
             const policyID = Policy.generatePolicyID();

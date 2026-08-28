@@ -2643,13 +2643,13 @@ function getRoleForCallerOnNewPolicy(isSubmitWorkspace: boolean, makeMeAdmin: bo
 
 function getApprovalModeForNewWorkspace(
     isSubmitWorkspace: boolean,
-    shouldEnableWorkflowsByDefault: boolean,
+    shouldEnableDelayedSubmission: boolean,
     engagementChoice?: OnboardingPurpose,
 ): ValueOf<typeof CONST.POLICY.APPROVAL_MODE> {
     if (isSubmitWorkspace) {
         return CONST.POLICY.APPROVAL_MODE.ADVANCED;
     }
-    if (shouldEnableWorkflowsByDefault && engagementChoice !== CONST.ONBOARDING_CHOICES.TRACK_WORKSPACE) {
+    if (shouldEnableDelayedSubmission && engagementChoice !== CONST.ONBOARDING_CHOICES.TRACK_WORKSPACE) {
         return CONST.POLICY.APPROVAL_MODE.BASIC;
     }
     return CONST.POLICY.APPROVAL_MODE.OPTIONAL;
@@ -2747,12 +2747,13 @@ function buildPolicyData(options: BuildPolicyDataOptions): OnyxData<BuildPolicyD
     const optimisticMccGroupData = buildOptimisticMccGroup();
 
     const isSubmitWorkspace = type === CONST.POLICY.TYPE.SUBMIT;
-    const shouldEnableWorkflowsByDefault =
-        isSubmitWorkspace ||
-        !engagementChoice ||
-        engagementChoice === CONST.ONBOARDING_CHOICES.MANAGE_TEAM ||
-        engagementChoice === CONST.ONBOARDING_CHOICES.LOOKING_AROUND ||
-        isTrackOnboardingChoice(engagementChoice);
+    const isTrackWorkspace = isTrackOnboardingChoice(engagementChoice);
+    // CreateWorkspace does not turn the Workflows feature on for a track workspace, so neither can the optimistic policy,
+    // otherwise the row shows up until the request is answered and then disappears. `createDraftWorkspace` matches this.
+    const areWorkflowsEnabled =
+        isSubmitWorkspace || !engagementChoice || engagementChoice === CONST.ONBOARDING_CHOICES.MANAGE_TEAM || engagementChoice === CONST.ONBOARDING_CHOICES.LOOKING_AROUND;
+    // A track workspace still submits immediately with harvesting off, even though the Workflows feature stays off.
+    const shouldEnableDelayedSubmission = areWorkflowsEnabled || isTrackWorkspace;
     const shouldSetCreatedPolicyAsActive = !activePolicy?.id || activePolicy?.type === CONST.POLICY.TYPE.PERSONAL;
 
     // Determine workspace type based on selected features or user reported integration
@@ -2795,22 +2796,20 @@ function buildPolicyData(options: BuildPolicyDataOptions): OnyxData<BuildPolicyD
                 pendingAction: CONST.RED_BRICK_ROAD_PENDING_ACTION.ADD,
                 autoReporting: true,
                 approver: currentUserEmailParam,
-                autoReportingFrequency: shouldEnableWorkflowsByDefault ? CONST.POLICY.AUTO_REPORTING_FREQUENCIES.IMMEDIATE : CONST.POLICY.AUTO_REPORTING_FREQUENCIES.INSTANT,
-                approvalMode: getApprovalModeForNewWorkspace(isSubmitWorkspace, shouldEnableWorkflowsByDefault, engagementChoice),
+                autoReportingFrequency: shouldEnableDelayedSubmission ? CONST.POLICY.AUTO_REPORTING_FREQUENCIES.IMMEDIATE : CONST.POLICY.AUTO_REPORTING_FREQUENCIES.INSTANT,
+                approvalMode: getApprovalModeForNewWorkspace(isSubmitWorkspace, shouldEnableDelayedSubmission, engagementChoice),
                 harvesting: {
-                    enabled: !shouldEnableWorkflowsByDefault,
+                    enabled: !shouldEnableDelayedSubmission,
                 },
                 reimbursementChoice:
-                    isTrackOnboardingChoice(engagementChoice) || type === CONST.POLICY.TYPE.SUBMIT
-                        ? CONST.POLICY.REIMBURSEMENT_CHOICES.REIMBURSEMENT_NO
-                        : CONST.POLICY.REIMBURSEMENT_CHOICES.REIMBURSEMENT_YES,
+                    isTrackWorkspace || type === CONST.POLICY.TYPE.SUBMIT ? CONST.POLICY.REIMBURSEMENT_CHOICES.REIMBURSEMENT_NO : CONST.POLICY.REIMBURSEMENT_CHOICES.REIMBURSEMENT_YES,
                 created: DateUtils.getDBTime(),
                 customUnits,
                 areCategoriesEnabled: true,
                 areCompanyCardsEnabled: !isSubmitWorkspace,
                 areTagsEnabled: isSubmitWorkspace,
                 areDistanceRatesEnabled,
-                areWorkflowsEnabled: shouldEnableWorkflowsByDefault,
+                areWorkflowsEnabled,
                 areReportFieldsEnabled: false,
                 areConnectionsEnabled: false,
                 areExpensifyCardsEnabled: false,
